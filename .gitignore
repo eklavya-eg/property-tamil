@@ -1,0 +1,5 @@
+# Build
+.vercel
+
+# Env Variables
+.env
