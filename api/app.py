@@ -1,5 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import json
 import requests
 # from typing import Optional
 from api.utils import *
@@ -17,18 +18,18 @@ app.add_middleware(
 async def upload_pdf(file: UploadFile = File(...)):
     try:
         if file.content_type != "application/pdf":
-            raise HTTPException(status_code=400, detail={"msg": "Only PDF files are allowed"})
+            return {"msg": "Only PDF files are allowed"}
         file_ = await file.read()
         response = fetch_json(file_)
         if response=={}:
-            raise HTTPException(status_code=400, detail={"msg": "Data not found"})
+            return {"msg": "Data not found"}
         return {"filename": file.filename, "content_type": file.content_type, "json_data":response}
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"msg": e})
+        return {"msg": e}
 
 @app.post("/patta/view/otpgenerate/")
-async def get_otp(
-    mobileNo: str | None = None, 
+def get_otp(
+    mobileNo: str = Form(...), 
 ):
     try:
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
@@ -54,27 +55,33 @@ async def get_otp(
             "Content-Type": "application/x-www-form-urlencoded"
         }
         otpres = json.loads(requests.post(url, data=params, headers=headers).text)
-        if otpres["statusCode"]!='true':
-            raise HTTPException(status_code=500, detail={"msg": "Server down"})
-        return {"msg": "Success"}
+        if str(otpres["statusCode"]).lower()!='true':
+            return {"msg": "Server down", 
+                    "mobileNo": mobileNo,
+                    "otpres": otpres["statusCode"]}
+        
+        return {"msg": "Success", 
+                "mobileNo": mobileNo,
+                "otpres": otpres["statusCode"]}
 
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"msg": e})
+        return {"msg": e,
+                "mobileNo": mobileNo}
 
 @app.post("/patta/view/patta/")
 async def get_patta_view(
-    district: str, 
-    taluk: str, 
-    village: str, 
-    landType: str,
-    optionNo: int, 
-    mobileNo: str, 
-    otpNo: str, 
-    pattaNo: str | None = None, 
-    surveyNo: str | None = None, 
-    subdivNo: str | None = None, 
-    pattaName: str | None = None, 
+    district: str = Form(...), 
+    taluk: str = Form(...), 
+    village: str = Form(...), 
+    landType: str = Form(...),
+    optionNo: int = Form(...), 
+    mobileNo: str = Form(...), 
+    otpNo: str = Form(...), 
+    pattaNo: str = Form(...), 
+    surveyNo: str = Form(...), 
+    subdivNo: str = Form(...), 
+    pattaName: str = Form(...), 
 ):
     try:
 
@@ -87,7 +94,7 @@ async def get_patta_view(
         }
         otpverifyres = json.loads(requests.post(url, params=params).text)
         if otpverifyres["statusCode"]!="true":
-            raise HTTPException(403, detail={"msg": "Wrong OTP"})
+            return {"msg": "Wrong OTP"}
         
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
         params = {
@@ -109,7 +116,7 @@ async def get_patta_view(
         for d in dis:
             if district==d["dname"] or district==d["dtname"]:
                 dcode = d["dcode"]
-        if dcode==None: raise HTTPException(status_code=401, detail = {"msg": "District name not found"})
+        if dcode==None: return {"msg": "District name not found"}
 
 
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
@@ -134,7 +141,7 @@ async def get_patta_view(
             if taluk==t["ttname"] or taluk==t["tname"]:
                 tcode = t["tcode"]
                 tnflag = t["nflag"]
-        if tcode==None: raise HTTPException(status_code=401, detail = {"msg": "Taluk name not found"})
+        if tcode==None: return {"msg": "Taluk name not found"}
         
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
         params = {
@@ -159,10 +166,10 @@ async def get_patta_view(
         for vill in vills:
             if village==vill["villagename"] or village==vill["villagetname"]:
                 vcode = vill["villagecode"]
-        if vcode==None: raise HTTPException(status_code=401, detail = {"msg": "District name not found"})
+        if vcode==None: return {"msg": "District name not found"}
 
         if optionNo<1 and optionNo>3:
-            raise HTTPException(status_code=401, detail = {"msg": "Option number not found"})
+            return {"msg": "Option number not found"}
 
 
         url = "https://eservices.tn.gov.in/eservicesnew/land/chittaExtract_ta.html?lan=ta"
@@ -220,7 +227,7 @@ async def get_patta_view(
             if subdivNo in requests.post(subdivurl, params=subdivparams, headers=subdivheaders).text:
                 pass
             else:
-                raise HTTPException(status_code=403, detail={"msg": "Sub Division not found"})
+                return {"msg": "Sub Division not found"}
 
             data = {
                 "task": "chittaTam",
@@ -262,7 +269,7 @@ async def get_patta_view(
         return {"response": response.text}
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"msg": e})
+        return {"msg": e}
 
 if __name__ == "__main__":
     import uvicorn
