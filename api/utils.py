@@ -14,7 +14,8 @@ query_template = f'''
 <=<=<=<=<=<pdf_text>=>=>=>=>=>
 """
 fetch DATA from the TEXT above, in below format given and then return json data file.
-and make sure to return a json with all square brackets and curly braces closed so that i can convert it to json.
+And make sure to return a json with all square brackets and curly braces closed so that i can convert it to json.
+Also if you do not found any text above or land details in that text or property related documents then simply return json with {{"document_type": null}} only.
 """
 {{
   "document_type":,
@@ -78,15 +79,27 @@ def get_response(prompt:str):
     return response
 
 def fetch_json(pdf_bytes):
-    pdf_text = extract_text_from_pdf(pdf_bytes)
-    prompt = get_prompt(pdf_text)
-    response = get_response(prompt)
-    start_str = "```json"
-    end_str = "```"
-    start = response.text.find(start_str)+len(start_str)
-    end = response.text.find(end_str, start)
-    if start>-1 and end>-1:
-      result = json.loads(response.text[start:end])
-    else:
-        result = {}
+    try:
+      pdf_text = extract_text_from_pdf(pdf_bytes)
+      prompt = get_prompt(pdf_text)
+      response = get_response(prompt)
+      start_str = "```json"
+      end_str = "```"
+      start = response.text.find(start_str)+len(start_str)
+      end = response.text.find(end_str, start)
+      if start>-1 and end>-1:
+        result = json.loads(response.text[start:end])
+        try:
+          land_details = dict(result).get("land_details")
+          def is_valid_land_detail(land):
+              return any(value is not None for key, value in land.items() if key != "registration_date")
+          any_valid = any(is_valid_land_detail(land) for land in land_details)
+          if any_valid==False:
+             result = {"document_type": None}
+        except Exception as e:
+          result = {"document_type": None}
+      else:
+          result = {"document_type": None}
+    except Exception as e:
+        result = {"error": e}
     return result
