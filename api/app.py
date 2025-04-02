@@ -85,14 +85,12 @@ async def get_patta_view(
 ):
     try:
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
-
         params = {
             "page": "verify_otp",
             "mobileno": mobileNo,
             "otpno": otpNo,
             "jsoncallback": "?"
         }
-
         headers = {
             "authority": "eservices.tn.gov.in",
             "method": "POST",
