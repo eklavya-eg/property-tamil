@@ -1,4 +1,4 @@
-import fitz
+import pdfplumber
 from google import genai
 from google.genai import types
 import os
@@ -13,10 +13,66 @@ query_template = f'''
 """
 <=<=<=<=<=<pdf_text>=>=>=>=>=>
 """
-fetch DATA from the TEXT above, in below format given and then return json data file.
+'''
+
+def get_prompt(pdf_text:str):
+    return query_template.replace("<=<=<=<=<=<pdf_text>=>=>=>=>=>", pdf_text, 1)
+
+def extract_text_from_pdf(pdf_bytes:bytes):
+    ordered_content = []
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page_num, page in enumerate(pdf.pages, start=1):
+            elements = []
+
+            tables = page.extract_tables()
+            for table in tables:
+                for i in range(len(table[0])):
+                   if table[0][i]==None and i>0:
+                      table[0][i]=table[0][i-1]
+                   if isinstance(table[0][i], str):
+                      table[0][i] = table[0][i].replace("\n", " ")
+                for i in range(len(table)):
+                   if i==0: continue
+                   for j in range(len(table[i])):
+                      if isinstance(table[i][j], str):
+                        table[i][j] = table[i][j].replace("\n", " ")
+                      if table[i][j]==None:
+                         table[i][j] = "\t"
+                   print(table[i])
+                elements.append({"type": "table", "content": "\n".join("|".join(t) for t in table)})
+
+            text = page.extract_text()
+            if text:
+                elements.append({"type": "text", "content": text.strip()})
+
+            ordered_content.append({
+                "page_number": page_num,
+                "elements": elements
+            })
+    return ordered_content
+
+def get_pdf_text(ordered_content:list):
+   main_text = ""
+   for i in ordered_content:
+      main_text+=f"page number - {i['page_number']}\n"
+      for el in i["elements"]:
+         main_text+=f"type - {el['type']}\t content - \n"
+         main_text+=f"{el['content']}\n\n\n"
+      main_text+="\n\n\n"
+   return main_text.strip()
+
+
+def get_response(prompt:str):
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        config=types.GenerateContentConfig(
+           system_instruction=f'''
+fetch DATA from the TEXT and TABLE given, TABLE's row are separated by lines and columns are separated with | this vertical bar (pipe), in below format given and then return json data file.
 And make sure to return a json with all square brackets and curly braces closed so that i can convert it to json.
 Also if you do not found any text above or land details in that text or property related documents then simply return json with {{"document_type": null}} only.
-"""
+
+Format - 
 {{
   "document_type":,
   "office":,
@@ -40,9 +96,10 @@ Also if you do not found any text above or land details in that text or property
   ],
   "land_details": [
     {{
+      "sur_field":,
+      "sub_division":,
       "new_survey_number":,
       "old_survey_number":,
-      "sub_division":,
       "land_type":,
       "area_hectare":,
       "area_acre":,
@@ -57,30 +114,17 @@ Also if you do not found any text above or land details in that text or property
   }},
   "notes": []
 }}
-"""
-'''
-
-def get_prompt(pdf_text:str):
-    return query_template.replace("<=<=<=<=<=<pdf_text>=>=>=>=>=>", pdf_text, 1)
-
-def extract_text_from_pdf(pdf_bytes:bytes):
-    with fitz.open(stream=io.BytesIO(pdf_bytes), filetype="pdf") as doc:
-        return "\n".join(page.get_text() for page in doc)
-
-
-def get_response(prompt:str):
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=[f'''{prompt}'''],
-        config=types.GenerateContentConfig(
-            temperature=0.1
-        )
+''',
+           temperature=0.1
+        ),
+        contents=[f'''{prompt}''']
     )
     return response
 
 def fetch_json(pdf_bytes):
     try:
       pdf_text = extract_text_from_pdf(pdf_bytes)
+      pdf_text = get_pdf_text(pdf_text)
       prompt = get_prompt(pdf_text)
       response = get_response(prompt)
       start_str = "```json"
@@ -101,5 +145,5 @@ def fetch_json(pdf_bytes):
       else:
           result = {"document_type": None}
     except Exception as e:
-        result = {"error": e}
+        result = {"error_occ": e}
     return result

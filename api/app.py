@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import requests
-# from typing import Optional
+from typing import Optional
 from api.utils import *
 
 app = FastAPI()
@@ -78,23 +78,45 @@ async def get_patta_view(
     optionNo: int = Form(...), 
     mobileNo: str = Form(...), 
     otpNo: str = Form(...), 
-    pattaNo: str = Form(...), 
-    surveyNo: str = Form(...), 
-    subdivNo: str = Form(...), 
-    pattaName: str = Form(...), 
+    pattaNo: Optional[str] = Form(None),
+    surveyNo: Optional[str] = Form(None),
+    subdivNo: Optional[str] = Form(None),
+    pattaName: Optional[str] = Form(None),
 ):
     try:
-
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
+
         params = {
             "page": "verify_otp",
             "mobileno": mobileNo,
             "otpno": otpNo,
             "jsoncallback": "?"
         }
-        otpverifyres = json.loads(requests.post(url, params=params).text)
+
+        headers = {
+            "authority": "eservices.tn.gov.in",
+            "method": "POST",
+            "scheme": "https",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "content-length": "0",
+            "cookie": "JSESSIONID=74E609B57F94BD5F44A74A6EEF002A83; Path=/tmp; httpsonly;",
+            "origin": "https://eservices.tn.gov.in",
+            "priority": "u=1, i",
+            "referer": "https://eservices.tn.gov.in/",
+            "sec-ch-ua": '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "Windows",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+        }
+
+        otpverifyres = json.loads(requests.post(url, params=params, headers=headers).text)
         if otpverifyres["statusCode"]!="true":
-            return {"msg": "Wrong OTP"}
+            return {"msg": otpverifyres}
         
         url = "https://eservices.tn.gov.in/eservicesnew/land/ajax.html"
         params = {
@@ -114,7 +136,7 @@ async def get_patta_view(
         dis = json.loads(requests.post(url, data=params, headers=headers).text)
         dcode=None
         for d in dis:
-            if district==d["dname"] or district==d["dtname"]:
+            if district.lower() in d["dname"].lower() or district in d["dtname"]:
                 dcode = d["dcode"]
         if dcode==None: return {"msg": "District name not found"}
 
@@ -138,7 +160,7 @@ async def get_patta_view(
         tcode = None
         tlks = json.loads(requests.post(url, data=params, headers=headers).text)
         for t in tlks:
-            if taluk==t["ttname"] or taluk==t["tname"]:
+            if taluk.lower() in t["ttname"].lower() or taluk in t["tname"]:
                 tcode = t["tcode"]
                 tnflag = t["nflag"]
         if tcode==None: return {"msg": "Taluk name not found"}
@@ -164,7 +186,7 @@ async def get_patta_view(
         vills = json.loads(requests.post(url, data=params, headers=headers).text)
         vcode = None
         for vill in vills:
-            if village==vill["villagename"] or village==vill["villagetname"]:
+            if village.lower() in vill["villagename"].lower() or village in vill["villagetname"]:
                 vcode = vill["villagecode"]
         if vcode==None: return {"msg": "District name not found"}
 
@@ -269,7 +291,7 @@ async def get_patta_view(
         return {"response": response.text}
 
     except Exception as e:
-        return {"msg": e}
+        return {"error_msg": e}
 
 if __name__ == "__main__":
     import uvicorn
